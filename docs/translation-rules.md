@@ -98,7 +98,7 @@ demands it. Use `chrono::NaiveDate::from_ymd_opt(yyyy, mm, dd)` and
   `UPDATE control SET customer_last = customer_last + 1 RETURNING customer_last`.
   This is atomic in CockroachDB.
 - For high-write tables (`proctran`), the primary key is hash-sharded
-  (`USING HASH WITH (bucket_count = 16)`) — see `V0__baseline.sql`.
+  (`USING HASH WITH (bucket_count = 16)`) — see `migrations/0001_baseline.sql`.
 
 ## 6. REST contract
 

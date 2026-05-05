@@ -82,4 +82,4 @@ Out-of-scope COBOL artefacts — `BNK1*`, `BNKMENU` (BMS terminal handlers),
 
 ## License
 
-Apache-2.0 — same as the upstream COBSA source.
+Apache-2.0 — same as the upstream CBSA source.
