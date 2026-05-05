@@ -60,3 +60,33 @@ pub fn is_serialization_failure(err: &sqlx::Error) -> bool {
 /// Kept small because CockroachDB performs its own internal retries before
 /// surfacing 40001 to the client.
 pub const DEFAULT_RETRY_ATTEMPTS: u32 = 5;
+
+/// Run `f` against the pool, retrying the whole closure on CockroachDB
+/// serialization failures (SQLSTATE `40001`). The closure is invoked with a
+/// freshly cloned `PgPool` on every attempt so the caller can `pool.begin()`
+/// a brand-new transaction per retry — restarting an already-aborted
+/// CockroachDB transaction is not supported and would surface a
+/// `current transaction is aborted` error instead of recovering.
+///
+/// Non-`40001` errors short-circuit immediately. After
+/// `DEFAULT_RETRY_ATTEMPTS` consecutive `40001` errors the last one is
+/// returned unchanged so the calling layer can wrap it as
+/// `CbsaError::abend("XRTY", ...)` per `docs/translation-rules.md` §8/§12.
+pub async fn with_retry<F, Fut, T>(pool: &PgPool, mut f: F) -> Result<T, sqlx::Error>
+where
+    F: FnMut(PgPool) -> Fut,
+    Fut: std::future::Future<Output = Result<T, sqlx::Error>>,
+{
+    let mut attempts = 0u32;
+    loop {
+        attempts += 1;
+        match f(pool.clone()).await {
+            Ok(value) => return Ok(value),
+            Err(err) if is_serialization_failure(&err) && attempts < DEFAULT_RETRY_ATTEMPTS => {
+                tracing::warn!(attempts, %err, "cockroachdb serialization retry");
+                continue;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
