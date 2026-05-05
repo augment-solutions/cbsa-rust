@@ -1,0 +1,19 @@
+# Default application configuration. Override any field with a CBSA_-
+# prefixed environment variable using `__` as a path separator, e.g.
+#   CBSA_DATABASE__URL=postgres://root@localhost:26257/cbsa
+#   CBSA_SERVER__BIND=0.0.0.0:8080
+#
+# IMPORTANT: zero-padded fixed-width identifiers such as `cbsa.sortcode`
+# are quoted strings. TOML happily strips leading zeros from bare numerics
+# (`987654` is fine but `012345` would silently become `12345` and fail
+# the `^[0-9]{6}$` startup validation). See translation-rules.md §10.
+
+[server]
+bind = "0.0.0.0:8080"
+
+[database]
+url = "postgres://root@localhost:26257/cbsa?sslmode=disable"
+max_connections = 10
+
+[cbsa]
+sortcode = "987654"
