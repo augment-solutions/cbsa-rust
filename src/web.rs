@@ -5,14 +5,18 @@ use axum::{routing::get, Json, Router};
 use serde::Serialize;
 use sqlx::PgPool;
 
+pub mod inqcust;
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
+    pub sortcode: String,
 }
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
+        .merge(inqcust::router())
         .with_state(state)
 }
 

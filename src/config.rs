@@ -68,7 +68,7 @@ impl AppConfig {
     }
 }
 
-fn is_six_ascii_digits(s: &str) -> bool {
+pub(crate) fn is_six_ascii_digits(s: &str) -> bool {
     s.len() == 6 && s.bytes().all(|b| b.is_ascii_digit())
 }
 

@@ -42,7 +42,14 @@ pub async fn connect(cfg: &AppConfig) -> Result<PgPool, DbError> {
 }
 
 pub async fn migrate(pool: &PgPool) -> Result<(), DbError> {
-    MIGRATOR.run(pool).await?;
+    let mut migrator = sqlx::migrate::Migrator {
+        migrations: MIGRATOR.migrations.clone(),
+        ignore_missing: MIGRATOR.ignore_missing,
+        locking: MIGRATOR.locking,
+        no_tx: MIGRATOR.no_tx,
+    };
+    migrator.set_locking(false);
+    migrator.run(pool).await?;
     Ok(())
 }
 

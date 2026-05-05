@@ -14,7 +14,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = db::connect(&cfg).await?;
     db::migrate(&pool).await?;
 
-    let app = web::router(web::AppState { pool: pool.clone() });
+    let app = web::router(web::AppState {
+        pool: pool.clone(),
+        sortcode: cfg.cbsa.sortcode.clone(),
+    });
     let addr: SocketAddr = cfg.server.bind.parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, "cbsa listening");
