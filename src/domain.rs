@@ -53,3 +53,49 @@ impl ProcTranType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proc_tran_type_as_str() {
+        assert_eq!(ProcTranType::ChequeAcctOpened.as_str(), "CHA");
+        assert_eq!(ProcTranType::ChequePaidIn.as_str(), "CHI");
+        assert_eq!(ProcTranType::ChequePaidOut.as_str(), "CHO");
+        assert_eq!(ProcTranType::Credit.as_str(), "CRE");
+        assert_eq!(ProcTranType::Debit.as_str(), "DEB");
+        assert_eq!(ProcTranType::BranchCreate.as_str(), "ICL");
+        assert_eq!(ProcTranType::CustomerCreate.as_str(), "OCC");
+        assert_eq!(ProcTranType::AccountCreate.as_str(), "OCA");
+        assert_eq!(ProcTranType::CustomerDelete.as_str(), "OCD");
+        assert_eq!(ProcTranType::AccountDelete.as_str(), "ODA");
+        assert_eq!(ProcTranType::Transfer.as_str(), "TFR");
+    }
+
+    #[test]
+    fn proc_tran_type_serde_roundtrip() {
+        let types = vec![
+            ProcTranType::ChequeAcctOpened,
+            ProcTranType::Credit,
+            ProcTranType::Transfer,
+        ];
+
+        for ty in types {
+            let json = serde_json::to_string(&ty).unwrap();
+            let roundtrip: ProcTranType = serde_json::from_str(&json).unwrap();
+            assert_eq!(roundtrip, ty);
+        }
+    }
+
+    #[test]
+    fn proc_tran_type_deserializes_from_cobol_value() {
+        let json = r#""CRE""#;
+        let ty: ProcTranType = serde_json::from_str(json).unwrap();
+        assert_eq!(ty, ProcTranType::Credit);
+
+        let json = r#""TFR""#;
+        let ty: ProcTranType = serde_json::from_str(json).unwrap();
+        assert_eq!(ty, ProcTranType::Transfer);
+    }
+}
