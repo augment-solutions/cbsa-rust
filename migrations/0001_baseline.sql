@@ -4,7 +4,13 @@
 -- Mapping summary:
 --   PIC 9(n)        -> integer / bigint sized to fit n digits
 --   PIC 9(n)V99     -> numeric(n+2,2)
---   PIC X(n)        -> varchar(n) (NOT NULL with default '' to match COBOL spaces)
+--   PIC X(n)        -> varchar(n) NOT NULL DEFAULT ''. COBOL stores text
+--                       fields space-padded to the column width; we collapse
+--                       that to an empty-string sentinel here because the
+--                       Rust domain model trims trailing ASCII spaces at the
+--                       repository boundary anyway. Callers that need the
+--                       original space-padded form must reconstruct it from
+--                       the column's declared length.
 --   PIC 9(8) date   -> date (DDMMYYYY in COBOL, decoded in app layer)
 --   REDEFINES       -> not modeled; the underlying scalar wins.
 --   eyecatcher      -> not persisted; an in-memory invariant only.

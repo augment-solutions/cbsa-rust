@@ -22,7 +22,9 @@ src/
     web/<program>.rs          one file per COBOL program (controller + DTOs)
   lib.rs main.rs
 migrations/
-  V*.sql               sqlx-managed schema migrations
+  NNNN_*.sql           sqlx-managed schema migrations (4-digit prefix
+                       per the `sqlx::migrate!` macro convention; e.g.
+                       0001_baseline.sql, 0002_proctran_counter_default.sql)
 ```
 
 One COBOL program → one `service::<program>` module + one

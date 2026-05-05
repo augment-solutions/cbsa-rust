@@ -86,17 +86,21 @@ impl IntoResponse for CbsaError {
                 ProblemDetail::new(StatusCode::INTERNAL_SERVER_ERROR, "Abend", msg.clone())
                     .with_abend_code(*code),
             ),
-            other => (
+            CbsaError::Database(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ProblemDetail::new(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Unexpected error",
-                    other.to_string(),
+                    "An unexpected error occurred. Please contact support if the problem persists.",
                 )
                 .with_abend_code(UNEXPECTED_ABEND_CODE),
             ),
         };
-        tracing::error!(?self, "cbsa error");
+        // Log the full error (including any underlying sqlx::Error) server-side
+        // only. The wire body intentionally carries a generic message so that
+        // database error text, query fragments, or other internal details
+        // never reach the caller.
+        tracing::error!(error = ?self, "cbsa error");
         (status, Json(pd)).into_response()
     }
 }

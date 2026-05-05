@@ -36,9 +36,9 @@ src/
   web.rs          axum router + AppState; /health
   lib.rs main.rs  library + bin entrypoints
 migrations/
-  V0__baseline.sql                CockroachDB schema (CUSTOMER, ACCOUNT,
-                                  PROCTRAN, CONTROL with hash-sharded PKs)
-  V1__proctran_counter_default.sql sequence-backed default for PROCTRAN.counter
+  0001_baseline.sql                CockroachDB schema (CUSTOMER, ACCOUNT,
+                                   PROCTRAN, CONTROL with hash-sharded PKs)
+  0002_proctran_counter_default.sql sequence-backed default for proctran.counter
 docs/
   translation-rules.md  authoritative COBOL → Rust rulebook
 .github/workflows/ci.yml  fmt + clippy + test on push/PR
