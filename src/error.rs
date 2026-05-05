@@ -9,9 +9,8 @@
 //!   by the controller from a domain "fail" value. See translation rules §6
 //!   and §13.
 
-use axum::http::StatusCode;
+use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::Serialize;
 
 pub const PROCTRAN_ABEND_CODE: &str = "HWPT";
@@ -74,33 +73,58 @@ impl ProblemDetail {
     }
 }
 
+/// Generic detail emitted for every 5xx response. The wire body intentionally
+/// withholds underlying error text so that sqlx fragments, abend messages
+/// constructed with embedded `Display` of an upstream error, query strings,
+/// or other internal details never reach the caller. The full error is
+/// recorded server-side via `tracing::error!`.
+const GENERIC_FAILURE_DETAIL: &str =
+    "Operation failed. Please contact support if the problem persists.";
+
 impl IntoResponse for CbsaError {
     fn into_response(self) -> Response {
+        // The full error (including any underlying sqlx::Error and free-form
+        // abend message string) is recorded server-side only. The wire body
+        // never carries the variant's `Display` output.
+        tracing::error!(error = ?self, "cbsa error");
         let (status, pd) = match &self {
             CbsaError::Validation(msg) => (
                 StatusCode::BAD_REQUEST,
                 ProblemDetail::new(StatusCode::BAD_REQUEST, "Validation failed", msg.clone()),
             ),
-            CbsaError::Abend(code, msg) => (
+            CbsaError::Abend(code, _) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                ProblemDetail::new(StatusCode::INTERNAL_SERVER_ERROR, "Abend", msg.clone())
-                    .with_abend_code(*code),
+                ProblemDetail::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Abend",
+                    GENERIC_FAILURE_DETAIL,
+                )
+                .with_abend_code(*code),
             ),
             CbsaError::Database(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ProblemDetail::new(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Unexpected error",
-                    "An unexpected error occurred. Please contact support if the problem persists.",
+                    GENERIC_FAILURE_DETAIL,
                 )
                 .with_abend_code(UNEXPECTED_ABEND_CODE),
             ),
         };
-        // Log the full error (including any underlying sqlx::Error) server-side
-        // only. The wire body intentionally carries a generic message so that
-        // database error text, query fragments, or other internal details
-        // never reach the caller.
-        tracing::error!(error = ?self, "cbsa error");
-        (status, Json(pd)).into_response()
+        problem_response(status, &pd)
     }
+}
+
+/// Build a `Response` whose body is the JSON serialisation of `pd` and whose
+/// `Content-Type` is `application/problem+json` per RFC 7807 §3. Using the
+/// dedicated media type lets clients dispatch on the response shape without
+/// sniffing the body.
+pub fn problem_response(status: StatusCode, pd: &ProblemDetail) -> Response {
+    let body = serde_json::to_vec(pd).unwrap_or_else(|_| b"{}".to_vec());
+    let mut response = (status, body).into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/problem+json"),
+    );
+    response
 }
