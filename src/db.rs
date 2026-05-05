@@ -47,9 +47,12 @@ pub async fn migrate(pool: &PgPool) -> Result<(), DbError> {
 }
 
 /// `true` if the error is a CockroachDB serialization failure (SQLSTATE
-/// 40001). Such errors must be retried by the surrounding transaction
-/// wrapper (`db::with_retry`, added by the first program PR that needs it
-/// — see `docs/translation-rules.md` §5) and never surfaced to the caller.
+/// 40001). The `with_retry` helper below uses this to decide whether to
+/// re-run a closure; on retry exhaustion the final `40001` is returned
+/// unchanged so the calling service layer can wrap it as
+/// `CbsaError::abend("XRTY", ...)` per `docs/translation-rules.md` §5/§8.
+/// Never surface a raw `40001` past the service boundary into the HTTP
+/// layer or the audit-trail wrap of §12.
 pub fn is_serialization_failure(err: &sqlx::Error) -> bool {
     err.as_database_error()
         .and_then(|d| d.code())
