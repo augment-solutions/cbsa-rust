@@ -47,9 +47,12 @@ pub async fn migrate(pool: &PgPool) -> Result<(), DbError> {
 }
 
 /// `true` if the error is a CockroachDB serialization failure (SQLSTATE
-/// 40001). Such errors must be retried by the surrounding transaction
-/// wrapper (`db::with_retry`, added by the first program PR that needs it
-/// — see `docs/translation-rules.md` §5) and never surfaced to the caller.
+/// 40001). The `with_retry` helper below uses this to decide whether to
+/// re-run a closure; on retry exhaustion the final `40001` is returned
+/// unchanged so the calling service layer can wrap it as
+/// `CbsaError::abend("XRTY", ...)` per `docs/translation-rules.md` §5/§8.
+/// Never surface a raw `40001` past the service boundary into the HTTP
+/// layer or the audit-trail wrap of §12.
 pub fn is_serialization_failure(err: &sqlx::Error) -> bool {
     err.as_database_error()
         .and_then(|d| d.code())
@@ -60,3 +63,33 @@ pub fn is_serialization_failure(err: &sqlx::Error) -> bool {
 /// Kept small because CockroachDB performs its own internal retries before
 /// surfacing 40001 to the client.
 pub const DEFAULT_RETRY_ATTEMPTS: u32 = 5;
+
+/// Run `f` against the pool, retrying the whole closure on CockroachDB
+/// serialization failures (SQLSTATE `40001`). The closure is invoked with a
+/// freshly cloned `PgPool` on every attempt so the caller can `pool.begin()`
+/// a brand-new transaction per retry — restarting an already-aborted
+/// CockroachDB transaction is not supported and would surface a
+/// `current transaction is aborted` error instead of recovering.
+///
+/// Non-`40001` errors short-circuit immediately. After
+/// `DEFAULT_RETRY_ATTEMPTS` consecutive `40001` errors the last one is
+/// returned unchanged so the calling layer can wrap it as
+/// `CbsaError::abend("XRTY", ...)` per `docs/translation-rules.md` §8/§12.
+pub async fn with_retry<F, Fut, T>(pool: &PgPool, mut f: F) -> Result<T, sqlx::Error>
+where
+    F: FnMut(PgPool) -> Fut,
+    Fut: std::future::Future<Output = Result<T, sqlx::Error>>,
+{
+    let mut attempts = 0u32;
+    loop {
+        attempts += 1;
+        match f(pool.clone()).await {
+            Ok(value) => return Ok(value),
+            Err(err) if is_serialization_failure(&err) && attempts < DEFAULT_RETRY_ATTEMPTS => {
+                tracing::warn!(attempts, %err, "cockroachdb serialization retry");
+                continue;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
