@@ -92,8 +92,11 @@ demands it. Use `chrono::NaiveDate::from_ymd_opt(yyyy, mm, dd)` and
   contended transactions. The bootstrap supplies a `db::with_retry`
   async helper (`fn(&PgPool, FnMut(PgPool) -> Future) -> Result`) that
   re-runs the whole closure on `db::is_serialization_failure(&err)`,
-  up to `DEFAULT_RETRY_ATTEMPTS` (currently 5). Never re-throw `40001`
-  to the caller.
+  up to `DEFAULT_RETRY_ATTEMPTS` (currently 5). On retry exhaustion
+  the final `40001` is returned unchanged so the calling service
+  layer can wrap it as `CbsaError::abend("XRTY", ...)` per §8. Never
+  surface a raw `40001` past the service boundary into the HTTP
+  layer or the audit-trail wrap of §12.
 - Sequence-allocation idioms (NCS `HBNKCUST`, `HBNKACCT`) are replaced by
   an UPSERT against `control`:
   `UPDATE control SET customer_last = customer_last + 1 RETURNING customer_last`.

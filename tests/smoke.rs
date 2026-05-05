@@ -6,7 +6,7 @@
 //! `tests/<program>.rs` files using `testcontainers-modules`.
 
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{header, HeaderValue, Request, StatusCode};
 use cbsa::web::{router, AppState};
 use http_body_util::BodyExt;
 use sqlx::postgres::PgPoolOptions;
@@ -31,6 +31,10 @@ async fn health_endpoint_returns_ok() {
         .expect("router must respond to /health");
 
     assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE),
+        Some(&HeaderValue::from_static("application/json")),
+    );
 
     let body = response.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(&body[..], br#"{"status":"ok"}"#);
