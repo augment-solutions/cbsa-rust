@@ -41,6 +41,18 @@ pub async fn connect(cfg: &AppConfig) -> Result<PgPool, DbError> {
     Ok(pool)
 }
 
+/// Apply the embedded sqlx migrations to a CockroachDB pool.
+///
+/// `sqlx` normally serializes migrators with PostgreSQL advisory locks, but
+/// CockroachDB does not support that mechanism, so we clone the embedded
+/// `MIGRATOR` and disable locking here per `docs/translation-rules.md` §5.
+///
+/// Because locking is off, production deployments must serialize schema
+/// migrations out-of-band (for example via a one-shot init container, a
+/// deploy-time `sqlx migrate run` job, or a single designated replica) rather
+/// than letting multiple app instances race on startup. We still keep the
+/// embedded `sqlx::migrate!` set so tests and local empty-database bootstrap can
+/// apply the same migration bundle deterministically.
 pub async fn migrate(pool: &PgPool) -> Result<(), DbError> {
     let mut migrator = sqlx::migrate::Migrator {
         migrations: MIGRATOR.migrations.clone(),

@@ -156,6 +156,34 @@ async fn rejects_customer_numbers_outside_the_copybook_range() {
     assert_eq!(body["status"], 400);
 }
 
+#[tokio::test]
+async fn rejects_non_numeric_customer_numbers_with_problem_detail() {
+    let _guard = TEST_MUTEX.lock().await;
+    let pool = test_pool().await;
+    let response = app("445566", &pool)
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/inqcust/abc")
+                .body(Body::empty())
+                .expect("request must build"),
+        )
+        .await
+        .expect("router must respond");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("application/problem+json"),
+    );
+
+    let body = response_json(response).await;
+    assert_eq!(body["type"], "about:blank");
+    assert_eq!(body["title"], "Validation failed");
+}
+
 #[test]
 fn marks_random_retry_exhausted_failures() {
     let result = inqcust::InqcustResult::failure(

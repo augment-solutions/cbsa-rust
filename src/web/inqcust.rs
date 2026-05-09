@@ -24,11 +24,9 @@ pub fn router() -> Router<AppState> {
 #[axum::debug_handler(state = AppState)]
 async fn inquire(
     State(state): State<AppState>,
-    Path(request): Path<InqcustRequestDto>,
+    Path(customer_number): Path<String>,
 ) -> Result<Response, CbsaError> {
-    request
-        .validate()
-        .map_err(|err| CbsaError::validation(err.to_string()))?;
+    let request = InqcustRequestDto::try_from(customer_number)?;
 
     let mut generator = SystemRandomCustomerNumberGenerator::default();
     let result =
@@ -68,6 +66,25 @@ pub struct InqcustRequestDto {
         message = "customer_number must be between 0 and 9999999999"
     ))]
     pub customer_number: i64,
+}
+
+impl TryFrom<String> for InqcustRequestDto {
+    type Error = CbsaError;
+
+    fn try_from(customer_number: String) -> Result<Self, Self::Error> {
+        let customer_number = customer_number.parse().map_err(|_| {
+            CbsaError::validation(
+                "customer_number must be a base-10 integer between 0 and 9999999999",
+            )
+        })?;
+
+        let request = Self { customer_number };
+        request
+            .validate()
+            .map_err(|err| CbsaError::validation(err.to_string()))?;
+
+        Ok(request)
+    }
 }
 
 impl From<InqcustRequestDto> for InqcustRequest {
