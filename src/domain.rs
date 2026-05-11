@@ -77,6 +77,8 @@ pub enum ProcTranType {
     CustomerCreate,
     #[serde(rename = "OCA")]
     AccountCreate,
+    #[serde(rename = "OUA")]
+    AccountUpdate,
     #[serde(rename = "OUC")]
     CustomerUpdate,
     #[serde(rename = "OCD")]
@@ -98,6 +100,7 @@ impl ProcTranType {
             Self::BranchCreate => "ICL",
             Self::CustomerCreate => "OCC",
             Self::AccountCreate => "OCA",
+            Self::AccountUpdate => "OUA",
             Self::CustomerUpdate => "OUC",
             Self::CustomerDelete => "OCD",
             Self::AccountDelete => "ODA",
