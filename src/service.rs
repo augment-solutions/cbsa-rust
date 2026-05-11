@@ -2,4 +2,5 @@
 //! program's migration PR. Empty in the bootstrap commit.
 
 pub mod inqacc;
+pub mod inqacccu;
 pub mod inqcust;
