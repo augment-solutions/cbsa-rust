@@ -6,6 +6,7 @@ use serde::Serialize;
 use sqlx::PgPool;
 
 pub mod inqacc;
+pub mod inqacccu;
 pub mod inqcust;
 
 #[derive(Clone)]
@@ -19,6 +20,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .merge(inqcust::router())
         .merge(inqacc::router())
+        .merge(inqacccu::router())
         .with_state(state)
 }
 
