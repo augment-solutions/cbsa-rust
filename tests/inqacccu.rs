@@ -184,6 +184,62 @@ async fn returns_not_found_when_customer_does_not_exist() {
 }
 
 #[tokio::test]
+async fn reserved_boundary_customer_numbers_return_not_found_even_when_present() {
+    let _guard = TEST_MUTEX.lock().await;
+    let pool = test_pool().await;
+    let sortcode = "891891";
+
+    for (customer_number, account_number) in [(0, 12_300_000), (9_999_999_999, 12_300_001)] {
+        insert_customer(
+            &pool,
+            CustomerSeed {
+                sortcode,
+                customer_number,
+            },
+        )
+        .await;
+        insert_account(
+            &pool,
+            AccountSeed {
+                sortcode,
+                customer_number,
+                account_number,
+                account_type: "CHKING",
+                interest_rate: Decimal::new(25, 2),
+                opened: NaiveDate::from_ymd_opt(2024, 5, 6).expect("valid date"),
+                overdraft_limit: Decimal::new(10000, 2),
+                last_stmt_date: None,
+                next_stmt_date: None,
+                available_balance: Decimal::new(5000, 2),
+                actual_balance: Decimal::new(5000, 2),
+            },
+        )
+        .await;
+
+        let response = app(sortcode, &pool)
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/v1/inqacccu/{customer_number}"))
+                    .body(Body::empty())
+                    .expect("request must build"),
+            )
+            .await
+            .expect("router must respond");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(content_type(&response), Some("application/problem+json"));
+
+        let body = response_json(response).await;
+        assert_eq!(body["title"], "Customer not found");
+        assert_eq!(body["failCode"], "1");
+        assert_eq!(
+            body["detail"],
+            format!("Customer number {customer_number} was not found.")
+        );
+    }
+}
+
+#[tokio::test]
 async fn rejects_customer_numbers_outside_the_copybook_range() {
     let _guard = TEST_MUTEX.lock().await;
     let pool = test_pool().await;

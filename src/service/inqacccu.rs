@@ -10,6 +10,7 @@ use crate::{
 
 const READ_FAILURE_ABEND_CODE: &str = "HACU";
 const NOT_FOUND_CODE: &str = "1";
+const RANDOM_CUSTOMER_NUMBER: i64 = 0;
 const LAST_CUSTOMER_NUMBER: i64 = 9_999_999_999;
 const CUSTOMER_NUMBER_RANGE_MESSAGE: &str = "customer_number must be between 0 and 9999999999";
 
@@ -53,7 +54,11 @@ impl InqacccuResult {
             return Err("Failure results must not include account data".to_string());
         }
 
-        if !inquiry_success && message.as_deref().is_none_or(str::is_empty) {
+        if !inquiry_success
+            && message
+                .as_deref()
+                .is_none_or(|message| message.trim().is_empty())
+        {
             return Err("Failure results must include a non-blank message".to_string());
         }
 
@@ -148,7 +153,7 @@ pub async fn inquire(
     validate_sortcode(sortcode)?;
     validate_customer_number(request.customer_number)?;
 
-    if matches!(request.customer_number, 0 | LAST_CUSTOMER_NUMBER) {
+    if is_reserved_customer_number(request.customer_number) {
         return Ok(customer_not_found(request.customer_number));
     }
 
@@ -189,6 +194,16 @@ pub async fn inquire(
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(InqacccuResult::success(customer_number, accounts))
+}
+
+/// `INQACCCU` treats `0` and `9999999999` as reserved sentinels in
+/// `CUSTOMER-CHECK`, returning `CUSTOMER-FOUND = 'N'` before linking to
+/// `INQCUST`. See `INQACCCU.cbl` lines 835-844.
+fn is_reserved_customer_number(customer_number: i64) -> bool {
+    matches!(
+        customer_number,
+        RANDOM_CUSTOMER_NUMBER | LAST_CUSTOMER_NUMBER
+    )
 }
 
 fn customer_not_found(customer_number: i64) -> InqacccuResult {
@@ -296,6 +311,21 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(err, "Failure results must not include account data");
+    }
+
+    #[test]
+    fn result_invariants_reject_whitespace_only_failure_messages() {
+        let err = InqacccuResult::new(false, "1", 42, false, Vec::new(), Some("   ".to_string()))
+            .unwrap_err();
+
+        assert_eq!(err, "Failure results must include a non-blank message");
+    }
+
+    #[test]
+    fn reserved_customer_numbers_are_copybook_sentinels() {
+        assert!(is_reserved_customer_number(RANDOM_CUSTOMER_NUMBER));
+        assert!(is_reserved_customer_number(LAST_CUSTOMER_NUMBER));
+        assert!(!is_reserved_customer_number(1));
     }
 
     #[test]
