@@ -2,6 +2,7 @@
 //! sqlx queries against its aggregate (customer, account, proctran, control).
 //! Empty in the bootstrap commit.
 
+pub mod creacc;
 pub mod crecust;
 pub mod inqacc;
 pub mod inqacccu;

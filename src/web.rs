@@ -5,6 +5,7 @@ use axum::{routing::get, Json, Router};
 use serde::Serialize;
 use sqlx::PgPool;
 
+pub mod creacc;
 pub mod crecust;
 pub mod inqacc;
 pub mod inqacccu;
@@ -22,6 +23,7 @@ pub fn router(state: AppState) -> Router {
         .merge(inqcust::router())
         .merge(inqacc::router())
         .merge(inqacccu::router())
+        .merge(creacc::router())
         .merge(crecust::router())
         .with_state(state)
 }
