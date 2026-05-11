@@ -257,7 +257,7 @@ fn proctran_description(account: &AccountDetails) -> String {
         account.account_number(),
         pad_or_truncate(account.account_type(), 8),
         unsigned_decimal_digits(account.interest_rate(), 6),
-        unsigned_decimal_digits(account.overdraft_limit(), 8),
+        unsigned_integer_digits(account.overdraft_limit(), 8),
     )
 }
 
@@ -266,6 +266,11 @@ fn unsigned_decimal_digits(value: Decimal, width: usize) -> String {
         .to_i128()
         .expect("decimal must fit into i128");
     format!("{:0width$}", scaled, width = width)
+}
+
+fn unsigned_integer_digits(value: Decimal, width: usize) -> String {
+    let integer = value.trunc().to_i128().expect("decimal must fit into i128");
+    format!("{:0width$}", integer, width = width)
 }
 
 fn pad_or_truncate(value: &str, width: usize) -> String {

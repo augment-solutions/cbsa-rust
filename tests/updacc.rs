@@ -6,7 +6,7 @@ use cbsa::{
     db,
     error::{CbsaError, PROCTRAN_ABEND_CODE},
     service::updacc::{self, UpdaccRequest},
-    web::{router, AppState},
+    web::{router, updacc::UpdaccRequestDto, AppState},
 };
 use chrono::NaiveDate;
 use http_body_util::BodyExt;
@@ -141,6 +141,74 @@ async fn updates_account_and_writes_proctran() {
     assert_eq!(proctran.get::<String, _>("tran_type"), "OUA");
     assert_eq!(proctran.get::<Decimal, _>("amount"), Decimal::ZERO);
     assert_eq!(proctran.get::<String, _>("description").len(), 40);
+}
+
+#[tokio::test]
+async fn max_overdraft_limit_keeps_oua_description_within_copybook_width() {
+    let _guard = TEST_MUTEX.lock().await;
+    let pool = test_pool().await;
+    clean_database(&pool).await;
+
+    insert_customer(
+        &pool,
+        CustomerSeed {
+            sortcode: "987654",
+            customer_number: 111,
+        },
+    )
+    .await;
+    insert_account(
+        &pool,
+        AccountSeed {
+            sortcode: "987654",
+            customer_number: 111,
+            account_number: 12_345_678,
+            account_type: "ISA",
+            interest_rate: Decimal::new(150, 2),
+            opened: NaiveDate::from_ymd_opt(2024, 1, 2).expect("valid date"),
+            overdraft_limit: Decimal::new(0, 0),
+            last_stmt_date: Some(NaiveDate::from_ymd_opt(2024, 2, 3).expect("valid date")),
+            next_stmt_date: Some(NaiveDate::from_ymd_opt(2024, 3, 4).expect("valid date")),
+            available_balance: Decimal::new(150_025, 2),
+            actual_balance: Decimal::new(149_975, 2),
+        },
+    )
+    .await;
+
+    let response = app("987654", &pool)
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/updacc")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(request_json("MORTGAGE", 2.25, 99_999_999)))
+                .expect("request must build"),
+        )
+        .await
+        .expect("router must respond");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let description = sqlx::query_scalar::<_, String>("SELECT description FROM proctran")
+        .fetch_one(&pool)
+        .await
+        .expect("proctran row must exist");
+    assert_eq!(description.len(), 40);
+    assert_eq!(description, "12345678MORTGAGE00022599999999          ");
+}
+
+#[test]
+fn json_number_money_fields_preserve_decimal_precision() {
+    let request: UpdaccRequestDto = serde_json::from_str(
+        r#"{"UpdAcc":{"CommEye":"ACCT","CommCustno":"0000000101","CommScode":"987654","CommAccno":12345678,"CommAccType":"MORTGAGE","CommIntRate":0.1,"CommOpened":2012024,"CommOverdraft":0.1,"CommLastStmtDt":3022024,"CommNextStmtDt":4032024,"CommAvailBal":1500.25,"CommActualBal":1499.75,"CommSuccess":" "}}"#,
+    )
+    .expect("request must deserialize");
+
+    let commarea = request.updacc.expect("UpdAcc must be present");
+    assert_eq!(commarea.comm_int_rate.as_deref(), Some("0.1"));
+    assert_eq!(commarea.comm_overdraft.as_deref(), Some("0.1"));
+    assert_eq!(commarea.comm_avail_bal.as_deref(), Some("1500.25"));
+    assert_eq!(commarea.comm_actual_bal.as_deref(), Some("1499.75"));
 }
 
 #[tokio::test]

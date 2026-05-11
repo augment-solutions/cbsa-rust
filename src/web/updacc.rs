@@ -9,7 +9,7 @@ use axum::{
 };
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use validator::{Validate, ValidationError};
 
 use crate::{
@@ -305,25 +305,15 @@ fn parse_decimal_field(value: String, field_name: &str) -> Result<Decimal, CbsaE
     Decimal::from_str(&value).map_err(|_| CbsaError::validation(format!("{field_name} is invalid")))
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum StringifiedInput {
-    String(String),
-    Integer(i64),
-    Float(f64),
-}
-
 fn deserialize_optional_stringified<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    Ok(
-        Option::<StringifiedInput>::deserialize(deserializer)?.map(|value| match value {
-            StringifiedInput::String(value) => value,
-            StringifiedInput::Integer(value) => value.to_string(),
-            StringifiedInput::Float(value) => Decimal::from_f64_retain(value)
-                .map(|decimal| decimal.normalize().to_string())
-                .unwrap_or_else(|| value.to_string()),
-        }),
-    )
+    Option::<serde_json::Value>::deserialize(deserializer)?
+        .map(|value| match value {
+            serde_json::Value::String(value) => Ok(value),
+            serde_json::Value::Number(value) => Ok(value.to_string()),
+            _ => Err(D::Error::custom("expected string or number")),
+        })
+        .transpose()
 }
