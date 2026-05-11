@@ -57,6 +57,7 @@ async fn creates_customer_updates_control_and_writes_proctran() {
     assert_eq!(body["CreCust"]["CommKey"]["CommNumber"], 1);
     assert_eq!(body["CreCust"]["CommName"], "Dr Alice Example");
     assert_eq!(body["CreCust"]["CommAddress"], "1 Main Street");
+    assert_eq!(body["CreCust"]["CommFailCode"], "0");
 
     let credit_score = body["CreCust"]["CommCreditScore"]
         .as_u64()

@@ -251,7 +251,7 @@ impl CrecustResponseDto {
                     .map(cobol_date)
                     .unwrap_or(0),
                 comm_success: "Y",
-                comm_fail_code: "",
+                comm_fail_code: "0",
             },
         }
     }
