@@ -7,4 +7,5 @@ pub mod crecust;
 pub mod inqacc;
 pub mod inqacccu;
 pub mod inqcust;
+pub mod updacc;
 pub mod updcust;

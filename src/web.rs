@@ -10,6 +10,7 @@ pub mod crecust;
 pub mod inqacc;
 pub mod inqacccu;
 pub mod inqcust;
+pub mod updacc;
 pub mod updcust;
 
 #[derive(Clone)]
@@ -26,6 +27,7 @@ pub fn router(state: AppState) -> Router {
         .merge(inqacccu::router())
         .merge(creacc::router())
         .merge(crecust::router())
+        .merge(updacc::router())
         .merge(updcust::router())
         .with_state(state)
 }
