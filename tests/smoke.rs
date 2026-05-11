@@ -18,7 +18,10 @@ async fn health_endpoint_returns_ok() {
         .connect_lazy("postgres://cbsa:cbsa@127.0.0.1:1/cbsa")
         .expect("lazy pool construction must succeed for a well-formed url");
 
-    let app = router(AppState { pool });
+    let app = router(AppState {
+        pool,
+        sortcode: "987654".to_string(),
+    });
 
     let response = app
         .oneshot(
