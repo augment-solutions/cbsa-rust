@@ -14,9 +14,47 @@ use crate::config::is_six_ascii_digits;
 const MIN_CUSTOMER_NUMBER: i64 = 0;
 const MAX_CUSTOMER_NUMBER: i64 = 9_999_999_999;
 const CUSTOMER_NUMBER_RANGE_MESSAGE: &str = "customer_number must be between 0 and 9999999999";
+const MAX_CUSTOMER_NAME_CHARS: usize = 60;
+const MAX_CUSTOMER_ADDRESS_CHARS: usize = 160;
 const MIN_ACCOUNT_NUMBER: i64 = 0;
 const MAX_ACCOUNT_NUMBER: i64 = 99_999_999;
 const ACCOUNT_NUMBER_RANGE_MESSAGE: &str = "account_number must be between 0 and 99999999";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomerProfile {
+    name: String,
+    address: String,
+}
+
+impl CustomerProfile {
+    pub fn new(name: String, address: String) -> Result<Self, String> {
+        if name.trim().is_empty() {
+            return Err("name must not be blank".to_string());
+        }
+
+        if name.chars().count() > MAX_CUSTOMER_NAME_CHARS {
+            return Err(format!(
+                "name must be at most {MAX_CUSTOMER_NAME_CHARS} characters"
+            ));
+        }
+
+        if address.chars().count() > MAX_CUSTOMER_ADDRESS_CHARS {
+            return Err(format!(
+                "address must be at most {MAX_CUSTOMER_ADDRESS_CHARS} characters"
+            ));
+        }
+
+        Ok(Self { name, address })
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn address(&self) -> &str {
+        &self.address
+    }
+}
 
 /// `PROC-TRAN-TYPE` (PIC X(3)) values used in `proctran.tran_type`. Every
 /// program that writes a PROCTRAN row picks one of these. The string form
@@ -279,6 +317,38 @@ mod tests {
         assert_eq!(
             customer(MAX_CUSTOMER_NUMBER + 1).unwrap_err(),
             CUSTOMER_NUMBER_RANGE_MESSAGE
+        );
+    }
+
+    #[test]
+    fn customer_profile_accepts_character_count_limits() {
+        let name = "é".repeat(MAX_CUSTOMER_NAME_CHARS);
+        let address = "ø".repeat(MAX_CUSTOMER_ADDRESS_CHARS);
+
+        let profile =
+            CustomerProfile::new(name.clone(), address.clone()).expect("profile must be valid");
+
+        assert_eq!(profile.name(), name);
+        assert_eq!(profile.address(), address);
+    }
+
+    #[test]
+    fn customer_profile_rejects_blank_name() {
+        assert_eq!(
+            CustomerProfile::new("   ".to_string(), "1 Main Street".to_string()).unwrap_err(),
+            "name must not be blank"
+        );
+    }
+
+    #[test]
+    fn customer_profile_rejects_name_longer_than_copybook_limit() {
+        assert_eq!(
+            CustomerProfile::new(
+                "é".repeat(MAX_CUSTOMER_NAME_CHARS + 1),
+                "1 Main Street".to_string()
+            )
+            .unwrap_err(),
+            format!("name must be at most {MAX_CUSTOMER_NAME_CHARS} characters")
         );
     }
 
