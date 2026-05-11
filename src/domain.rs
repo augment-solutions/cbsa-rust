@@ -6,6 +6,7 @@
 //! shared between every program that writes a `PROCTRAN` row.
 
 use chrono::NaiveDate;
+use rust_decimal::{Decimal, RoundingStrategy};
 use serde::{Deserialize, Serialize};
 
 use crate::config::is_six_ascii_digits;
@@ -13,6 +14,9 @@ use crate::config::is_six_ascii_digits;
 const MIN_CUSTOMER_NUMBER: i64 = 0;
 const MAX_CUSTOMER_NUMBER: i64 = 9_999_999_999;
 const CUSTOMER_NUMBER_RANGE_MESSAGE: &str = "customer_number must be between 0 and 9999999999";
+const MIN_ACCOUNT_NUMBER: i64 = 0;
+const MAX_ACCOUNT_NUMBER: i64 = 99_999_999;
+const ACCOUNT_NUMBER_RANGE_MESSAGE: &str = "account_number must be between 0 and 99999999";
 
 /// `PROC-TRAN-TYPE` (PIC X(3)) values used in `proctran.tran_type`. Every
 /// program that writes a PROCTRAN row picks one of these. The string form
@@ -134,6 +138,116 @@ impl CustomerDetails {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountDetails {
+    sortcode: String,
+    customer_number: i64,
+    account_number: i64,
+    account_type: String,
+    interest_rate: Decimal,
+    opened: NaiveDate,
+    overdraft_limit: Decimal,
+    last_statement_date: Option<NaiveDate>,
+    next_statement_date: Option<NaiveDate>,
+    available_balance: Decimal,
+    actual_balance: Decimal,
+}
+
+impl AccountDetails {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        sortcode: String,
+        customer_number: i64,
+        account_number: i64,
+        account_type: String,
+        interest_rate: Decimal,
+        opened: NaiveDate,
+        overdraft_limit: Decimal,
+        last_statement_date: Option<NaiveDate>,
+        next_statement_date: Option<NaiveDate>,
+        available_balance: Decimal,
+        actual_balance: Decimal,
+    ) -> Result<Self, String> {
+        if !is_six_ascii_digits(&sortcode) {
+            return Err("sortcode must be exactly 6 ASCII digits".to_string());
+        }
+
+        if !(MIN_CUSTOMER_NUMBER..=MAX_CUSTOMER_NUMBER).contains(&customer_number) {
+            return Err(CUSTOMER_NUMBER_RANGE_MESSAGE.to_string());
+        }
+
+        if !(MIN_ACCOUNT_NUMBER..=MAX_ACCOUNT_NUMBER).contains(&account_number) {
+            return Err(ACCOUNT_NUMBER_RANGE_MESSAGE.to_string());
+        }
+
+        if account_type.len() > 8 {
+            return Err("account_type must be at most 8 characters".to_string());
+        }
+
+        Ok(Self {
+            sortcode,
+            customer_number,
+            account_number,
+            account_type,
+            interest_rate: round_money(interest_rate),
+            opened,
+            overdraft_limit: round_money(overdraft_limit),
+            last_statement_date,
+            next_statement_date,
+            available_balance: round_money(available_balance),
+            actual_balance: round_money(actual_balance),
+        })
+    }
+
+    pub fn sortcode(&self) -> &str {
+        &self.sortcode
+    }
+
+    pub fn customer_number(&self) -> i64 {
+        self.customer_number
+    }
+
+    pub fn account_number(&self) -> i64 {
+        self.account_number
+    }
+
+    pub fn account_type(&self) -> &str {
+        &self.account_type
+    }
+
+    pub fn interest_rate(&self) -> Decimal {
+        self.interest_rate
+    }
+
+    pub fn opened(&self) -> NaiveDate {
+        self.opened
+    }
+
+    pub fn overdraft_limit(&self) -> Decimal {
+        self.overdraft_limit
+    }
+
+    pub fn last_statement_date(&self) -> Option<NaiveDate> {
+        self.last_statement_date
+    }
+
+    pub fn next_statement_date(&self) -> Option<NaiveDate> {
+        self.next_statement_date
+    }
+
+    pub fn available_balance(&self) -> Decimal {
+        self.available_balance
+    }
+
+    pub fn actual_balance(&self) -> Decimal {
+        self.actual_balance
+    }
+}
+
+fn round_money(value: Decimal) -> Decimal {
+    value.round_dp_with_strategy(2, RoundingStrategy::MidpointNearestEven)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,5 +280,61 @@ mod tests {
             customer(MAX_CUSTOMER_NUMBER + 1).unwrap_err(),
             CUSTOMER_NUMBER_RANGE_MESSAGE
         );
+    }
+
+    fn account(account_number: i64) -> Result<AccountDetails, String> {
+        AccountDetails::new(
+            "012345".to_string(),
+            42,
+            account_number,
+            "ISA".to_string(),
+            Decimal::new(125, 2),
+            NaiveDate::from_ymd_opt(2024, 1, 2).expect("valid date"),
+            Decimal::new(250, 0),
+            Some(NaiveDate::from_ymd_opt(2024, 2, 3).expect("valid date")),
+            Some(NaiveDate::from_ymd_opt(2024, 3, 4).expect("valid date")),
+            Decimal::new(150_025, 2),
+            Decimal::new(149_975, 2),
+        )
+    }
+
+    #[test]
+    fn account_details_accepts_copybook_account_number_bounds() {
+        for account_number in [MIN_ACCOUNT_NUMBER, MAX_ACCOUNT_NUMBER] {
+            assert_eq!(
+                account(account_number).unwrap().account_number(),
+                account_number
+            );
+        }
+    }
+
+    #[test]
+    fn account_details_rejects_out_of_range_account_number() {
+        assert_eq!(
+            account(MAX_ACCOUNT_NUMBER + 1).unwrap_err(),
+            ACCOUNT_NUMBER_RANGE_MESSAGE
+        );
+    }
+
+    #[test]
+    fn account_details_rounds_money_fields_with_bankers_rounding() {
+        let account = AccountDetails::new(
+            "012345".to_string(),
+            42,
+            12_345_678,
+            "SAVINGS".to_string(),
+            Decimal::new(125, 3),
+            NaiveDate::from_ymd_opt(2024, 1, 2).expect("valid date"),
+            Decimal::new(250_005, 3),
+            None,
+            None,
+            Decimal::new(150_025, 2),
+            Decimal::new(123_445, 3),
+        )
+        .expect("account must be valid");
+
+        assert_eq!(account.interest_rate(), Decimal::new(12, 2));
+        assert_eq!(account.overdraft_limit(), Decimal::new(250, 0));
+        assert_eq!(account.actual_balance(), Decimal::new(12_344, 2));
     }
 }
