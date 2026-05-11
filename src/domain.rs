@@ -180,7 +180,7 @@ impl AccountDetails {
             return Err(ACCOUNT_NUMBER_RANGE_MESSAGE.to_string());
         }
 
-        if account_type.len() > 8 {
+        if account_type.chars().count() > 8 {
             return Err("account_type must be at most 8 characters".to_string());
         }
 
@@ -314,6 +314,26 @@ mod tests {
             account(MAX_ACCOUNT_NUMBER + 1).unwrap_err(),
             ACCOUNT_NUMBER_RANGE_MESSAGE
         );
+    }
+
+    #[test]
+    fn account_details_accepts_eight_non_ascii_account_type_characters() {
+        let account = AccountDetails::new(
+            "012345".to_string(),
+            42,
+            12_345_678,
+            "éééééééé".to_string(),
+            Decimal::new(125, 2),
+            NaiveDate::from_ymd_opt(2024, 1, 2).expect("valid date"),
+            Decimal::new(250, 0),
+            None,
+            None,
+            Decimal::new(150_025, 2),
+            Decimal::new(149_975, 2),
+        )
+        .expect("eight characters should be accepted regardless of byte width");
+
+        assert_eq!(account.account_type(), "éééééééé");
     }
 
     #[test]

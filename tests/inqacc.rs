@@ -92,13 +92,13 @@ async fn returns_account_for_successful_lookup() {
     assert_eq!(body["sortcode"], sortcode);
     assert_eq!(body["account_number"], 12_345_678);
     assert_eq!(body["account_type"], "ISA");
-    assert_eq!(body["interest_rate"], 1.5);
+    assert_eq!(body["interest_rate"], "1.50");
     assert_eq!(body["opened"]["day"], 2);
-    assert_eq!(body["overdraft"], 250.0);
+    assert_eq!(body["overdraft"], "250.00");
     assert_eq!(body["last_statement_date"]["month"], 2);
     assert_eq!(body["next_statement_date"]["year"], 2024);
-    assert_eq!(body["available_balance"], 1500.25);
-    assert_eq!(body["actual_balance"], 1499.75);
+    assert_eq!(body["available_balance"], "1500.25");
+    assert_eq!(body["actual_balance"], "1499.75");
     assert_eq!(body["inquiry_success"], "Y");
     assert_eq!(body["pcb1_pointer"], "");
 }

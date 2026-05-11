@@ -8,7 +8,6 @@ use axum::{
 use chrono::Datelike;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use serde_json::{Number, Value};
 use validator::Validate;
 
 use crate::{
@@ -119,13 +118,13 @@ pub struct InqaccResponseDto {
     pub sortcode: String,
     pub account_number: i64,
     pub account_type: String,
-    pub interest_rate: Value,
+    pub interest_rate: String,
     pub opened: InqaccDateDto,
-    pub overdraft: Value,
+    pub overdraft: String,
     pub last_statement_date: InqaccDateDto,
     pub next_statement_date: InqaccDateDto,
-    pub available_balance: Value,
-    pub actual_balance: Value,
+    pub available_balance: String,
+    pub actual_balance: String,
     pub inquiry_success: &'static str,
     pub pcb1_pointer: &'static str,
 }
@@ -161,12 +160,6 @@ impl InqaccResponseDto {
     }
 }
 
-fn decimal_value(value: Decimal) -> Value {
-    let number = value
-        .normalize()
-        .to_string()
-        .parse::<Number>()
-        .expect("decimal values used in INQACC responses must be valid JSON numbers");
-
-    Value::Number(number)
+fn decimal_value(value: Decimal) -> String {
+    value.to_string()
 }
