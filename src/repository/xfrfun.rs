@@ -51,7 +51,7 @@ pub async fn transfer_funds(
         async move {
             let mut tx = pool.begin().await?;
             let outcome = transfer_funds_once(&mut tx, &command).await?;
-            if matches!(outcome, XfrfunOnceOutcome::Success { .. }) {
+            if matches!(outcome, XfrfunOnceOutcome::Success(_)) {
                 tx.commit().await?;
             }
             Ok(outcome)
@@ -68,9 +68,14 @@ pub async fn transfer_funds(
 
     match outcome {
         XfrfunOnceOutcome::Success(transfer) => {
+            let SuccessfulTransfer {
+                from_account,
+                to_account,
+            } = *transfer;
+
             Ok(XfrfunOutcome::Success(Box::new(SuccessfulTransfer {
-                from_account: transfer.from_account,
-                to_account: transfer.to_account,
+                from_account,
+                to_account,
             })))
         }
         XfrfunOnceOutcome::Failure { fail_code, message } => {
