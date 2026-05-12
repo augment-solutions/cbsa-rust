@@ -156,12 +156,12 @@ struct SeededOutcome {
 }
 
 fn seeded_outcome(
-    agency: CreditAgency,
+    _agency: CreditAgency,
     request: &CreditAgencyRequest,
     seed: u64,
 ) -> Result<SeededOutcome, CbsaError> {
     validate_request(request)?;
-    let mut rng = Lcg64::new(seed ^ u64::from(agency.number()));
+    let mut rng = Lcg64::new(seed);
     Ok(SeededOutcome {
         delay: Duration::from_secs(
             (rng.next_u64() % (MAX_DELAY_SECONDS_EXCLUSIVE - MIN_DELAY_SECONDS))
