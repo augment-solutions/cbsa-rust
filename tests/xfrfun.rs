@@ -42,7 +42,7 @@ struct AccountSeed<'a> {
 }
 
 #[tokio::test]
-async fn transfers_funds_and_writes_two_transfer_audit_rows() {
+async fn transfers_funds_and_writes_one_transfer_audit_row() {
     let _guard = TEST_MUTEX.lock().await;
     let pool = test_pool().await;
     clean_database(&pool).await;
@@ -137,23 +137,14 @@ async fn transfers_funds_and_writes_two_transfer_audit_rows() {
             .await
             .expect("audit rows must be readable");
 
-    assert_eq!(audit_rows.len(), 2);
+    assert_eq!(audit_rows.len(), 1);
     assert_eq!(audit_rows[0].get::<String, _>("tran_type"), "TFR");
-    assert_eq!(audit_rows[1].get::<String, _>("tran_type"), "TFR");
     assert_eq!(
         audit_rows[0].get::<String, _>("description"),
         format!("{:<26}98765487654321", "TRANSFER")
     );
     assert_eq!(
-        audit_rows[1].get::<String, _>("description"),
-        format!("{:<26}98765412345678", "TRANSFER")
-    );
-    assert_eq!(
         audit_rows[0].get::<Decimal, _>("amount"),
-        Decimal::new(2_500, 2)
-    );
-    assert_eq!(
-        audit_rows[1].get::<Decimal, _>("amount"),
         Decimal::new(2_500, 2)
     );
 }

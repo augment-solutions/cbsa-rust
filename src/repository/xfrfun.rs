@@ -195,28 +195,23 @@ async fn transfer_funds_once(
         }
     }
 
-    for description in [
-        transfer_description(&command.sortcode, command.to_account_number),
-        transfer_description(&command.sortcode, command.from_account_number),
-    ] {
-        match insert_proctran(
-            &mut *tx,
-            command,
-            ProctranInsert {
-                description,
-                amount: command.amount,
-            },
-        )
-        .await
-        {
-            Ok(()) => {}
-            Err(err) if db::is_serialization_failure(&err) => return Err(err),
-            Err(err) => {
-                return Ok(XfrfunOnceOutcome::Abend {
-                    code: PROCTRAN_ABEND_CODE,
-                    message: format!("XFRFUN failed to write the audit trail: {err}"),
-                })
-            }
+    match insert_proctran(
+        &mut *tx,
+        command,
+        ProctranInsert {
+            description: transfer_description(&command.sortcode, command.to_account_number),
+            amount: command.amount,
+        },
+    )
+    .await
+    {
+        Ok(()) => {}
+        Err(err) if db::is_serialization_failure(&err) => return Err(err),
+        Err(err) => {
+            return Ok(XfrfunOnceOutcome::Abend {
+                code: PROCTRAN_ABEND_CODE,
+                message: format!("XFRFUN failed to write the audit trail: {err}"),
+            })
         }
     }
 
