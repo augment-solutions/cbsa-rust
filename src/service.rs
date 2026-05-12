@@ -3,6 +3,7 @@
 
 pub mod creacc;
 pub mod crecust;
+pub mod delacc;
 pub mod delcus;
 pub mod inqacc;
 pub mod inqacccu;
