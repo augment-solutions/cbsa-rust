@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use axum::{
     body::Body,
     http::{header, Request, StatusCode},
@@ -5,11 +6,16 @@ use axum::{
 use cbsa::{
     db,
     error::{CbsaError, PROCTRAN_ABEND_CODE},
-    service::crecust::{self, CrecustRequest},
+    service::{
+        crdtagy::{self, CreditAgency, CreditAgencyClient, CreditAgencyRequest},
+        crecust::{self, CrecustRequest},
+    },
     web::{router, AppState},
 };
+use chrono::{DateTime, Days, Utc};
 use http_body_util::BodyExt;
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
+use std::sync::Arc;
 use testcontainers_modules::{
     cockroach_db::CockroachDb,
     testcontainers::{runners::AsyncRunner, ContainerAsync},
@@ -23,6 +29,26 @@ static TEST_DATABASE: OnceCell<TestDatabase> = OnceCell::const_new();
 struct TestDatabase {
     _container: Option<ContainerAsync<CockroachDb>>,
     database_url: String,
+}
+
+struct SeededCreditAgencyClient {
+    base_seed: u64,
+}
+
+#[async_trait]
+impl CreditAgencyClient for SeededCreditAgencyClient {
+    async fn request_score(
+        &self,
+        agency: CreditAgency,
+        request: CreditAgencyRequest,
+    ) -> Result<u16, CbsaError> {
+        crdtagy::request_score_with_seed(
+            agency,
+            request,
+            self.base_seed + u64::from(agency.number()),
+        )
+        .await
+    }
 }
 
 #[tokio::test]
@@ -266,6 +292,75 @@ async fn proctran_insert_failure_surfaces_hwpt_abend_and_rolls_back() {
     assert_eq!(proctran_count, 0);
     assert_eq!(control.get::<i64, _>("customer_count"), 0);
     assert_eq!(control.get::<i64, _>("customer_last"), 0);
+}
+
+#[tokio::test]
+async fn creates_customer_with_credit_score_averaged_from_seeded_agencies() {
+    let _guard = TEST_MUTEX.lock().await;
+    let pool = test_pool().await;
+    clean_database(&pool).await;
+
+    let base_seed = 7_000u64;
+    let fixed_now = DateTime::parse_from_rfc3339("2026-05-01T10:15:30Z")
+        .expect("timestamp must parse")
+        .with_timezone(&Utc);
+    let request = CrecustRequest {
+        name: "Dr Alice Example".to_string(),
+        address: "1 Main Street".to_string(),
+        date_of_birth: 10_012_000,
+    };
+
+    let credit_request = CreditAgencyRequest {
+        name: request.name.clone(),
+        address: request.address.clone(),
+        date_of_birth: request.date_of_birth,
+    };
+    let mut handles = Vec::new();
+    for agency in CreditAgency::ALL {
+        let request = credit_request.clone();
+        handles.push(tokio::spawn(async move {
+            crdtagy::request_score_with_seed(
+                agency,
+                request,
+                base_seed + u64::from(agency.number()),
+            )
+            .await
+        }));
+    }
+
+    let mut expected_total = 0u32;
+    for handle in handles {
+        let score = handle
+            .await
+            .expect("task must finish")
+            .expect("seeded score must be produced");
+        expected_total += u32::from(score);
+    }
+    let expected_average = expected_total
+        / u32::try_from(CreditAgency::ALL.len()).expect("agency count fits into u32");
+
+    let result = crecust::create_with_test_dependencies(
+        &pool,
+        "987654",
+        request,
+        fixed_now,
+        7,
+        Arc::new(SeededCreditAgencyClient { base_seed }),
+    )
+    .await
+    .expect("customer creation must succeed");
+
+    let customer = result.customer().expect("result must include customer");
+    assert_eq!(customer.credit_score(), expected_average as u16);
+    assert_eq!(
+        customer.credit_score_review_date(),
+        Some(
+            fixed_now
+                .date_naive()
+                .checked_add_days(Days::new(7))
+                .expect("review date must exist")
+        )
+    );
 }
 
 async fn clean_database(pool: &PgPool) {
