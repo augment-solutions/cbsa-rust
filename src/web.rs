@@ -7,6 +7,7 @@ use sqlx::PgPool;
 
 pub mod creacc;
 pub mod crecust;
+pub mod delacc;
 pub mod delcus;
 pub mod inqacc;
 pub mod inqacccu;
@@ -28,6 +29,7 @@ pub fn router(state: AppState) -> Router {
         .merge(inqacccu::router())
         .merge(creacc::router())
         .merge(crecust::router())
+        .merge(delacc::router())
         .merge(delcus::router())
         .merge(updacc::router())
         .merge(updcust::router())
