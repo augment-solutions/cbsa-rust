@@ -11,3 +11,4 @@ pub mod inqacccu;
 pub mod inqcust;
 pub mod updacc;
 pub mod updcust;
+pub mod xfrfun;
