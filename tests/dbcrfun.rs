@@ -139,6 +139,83 @@ async fn updates_balances_and_writes_payment_debit_audit_row() {
 }
 
 #[tokio::test]
+async fn updates_balances_and_writes_payment_credit_audit_row() {
+    let _guard = TEST_MUTEX.lock().await;
+    let pool = test_pool().await;
+    clean_database(&pool).await;
+
+    insert_customer(
+        &pool,
+        CustomerSeed {
+            sortcode: "987654",
+            customer_number: 111,
+        },
+    )
+    .await;
+    insert_account(
+        &pool,
+        AccountSeed {
+            sortcode: "987654",
+            customer_number: 111,
+            account_number: 11_223_344,
+            account_type: "ISA",
+            interest_rate: Decimal::new(150, 2),
+            opened: NaiveDate::from_ymd_opt(2024, 1, 2).expect("valid date"),
+            overdraft_limit: Decimal::new(250, 0),
+            last_stmt_date: Some(NaiveDate::from_ymd_opt(2024, 2, 3).expect("valid date")),
+            next_stmt_date: Some(NaiveDate::from_ymd_opt(2024, 3, 4).expect("valid date")),
+            available_balance: Decimal::new(50_000, 2),
+            actual_balance: Decimal::new(50_000, 2),
+        },
+    )
+    .await;
+
+    let response = app("987654", &pool)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/dbcrfun")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(request_json(
+                    "11223344", "25.00", 496, "000000", "ABCDEFGH", "12345678",
+                )))
+                .expect("request must build"),
+        )
+        .await
+        .expect("router must respond");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let account = sqlx::query(
+        "SELECT available_balance, actual_balance FROM account WHERE sortcode = $1 AND account_number = $2",
+    )
+    .bind("987654")
+    .bind(11_223_344_i64)
+    .fetch_one(&pool)
+    .await
+    .expect("updated account must exist");
+    assert_eq!(
+        account.get::<Decimal, _>("available_balance"),
+        Decimal::new(52_500, 2)
+    );
+    assert_eq!(
+        account.get::<Decimal, _>("actual_balance"),
+        Decimal::new(52_500, 2)
+    );
+
+    let proctran = sqlx::query("SELECT tran_type, description, amount FROM proctran")
+        .fetch_one(&pool)
+        .await
+        .expect("proctran row must exist");
+    assert_eq!(proctran.get::<String, _>("tran_type"), "PCR");
+    assert_eq!(
+        proctran.get::<String, _>("description"),
+        format!("{:<40}", "ABCDEFGH123456")
+    );
+    assert_eq!(proctran.get::<Decimal, _>("amount"), Decimal::new(2_500, 2));
+}
+
+#[tokio::test]
 async fn zero_amount_is_treated_as_credit_for_counter_transactions() {
     let _guard = TEST_MUTEX.lock().await;
     let pool = test_pool().await;
@@ -197,6 +274,86 @@ async fn zero_amount_is_treated_as_credit_for_counter_transactions() {
 
     assert_eq!(tran_type, "CRE");
     assert_eq!(description, format!("{:<40}", "COUNTER RECVED"));
+}
+
+#[tokio::test]
+async fn updates_balances_and_writes_counter_debit_audit_row() {
+    let _guard = TEST_MUTEX.lock().await;
+    let pool = test_pool().await;
+    clean_database(&pool).await;
+
+    insert_customer(
+        &pool,
+        CustomerSeed {
+            sortcode: "987654",
+            customer_number: 212,
+        },
+    )
+    .await;
+    insert_account(
+        &pool,
+        AccountSeed {
+            sortcode: "987654",
+            customer_number: 212,
+            account_number: 22_334_455,
+            account_type: "SAVING",
+            interest_rate: Decimal::new(125, 2),
+            opened: NaiveDate::from_ymd_opt(2024, 4, 5).expect("valid date"),
+            overdraft_limit: Decimal::new(100, 0),
+            last_stmt_date: None,
+            next_stmt_date: None,
+            available_balance: Decimal::new(10_000, 2),
+            actual_balance: Decimal::new(10_000, 2),
+        },
+    )
+    .await;
+
+    let response = app("987654", &pool)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/dbcrfun")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(request_json(
+                    "22334455", "-12.34", 0, "000000", "TELLER", "USER0001",
+                )))
+                .expect("request must build"),
+        )
+        .await
+        .expect("router must respond");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let account = sqlx::query(
+        "SELECT available_balance, actual_balance FROM account WHERE sortcode = $1 AND account_number = $2",
+    )
+    .bind("987654")
+    .bind(22_334_455_i64)
+    .fetch_one(&pool)
+    .await
+    .expect("updated account must exist");
+    assert_eq!(
+        account.get::<Decimal, _>("available_balance"),
+        Decimal::new(8_766, 2)
+    );
+    assert_eq!(
+        account.get::<Decimal, _>("actual_balance"),
+        Decimal::new(8_766, 2)
+    );
+
+    let proctran = sqlx::query("SELECT tran_type, description, amount FROM proctran")
+        .fetch_one(&pool)
+        .await
+        .expect("proctran row must exist");
+    assert_eq!(proctran.get::<String, _>("tran_type"), "DEB");
+    assert_eq!(
+        proctran.get::<String, _>("description"),
+        format!("{:<40}", "COUNTER WTHDRW")
+    );
+    assert_eq!(
+        proctran.get::<Decimal, _>("amount"),
+        Decimal::new(-1_234, 2)
+    );
 }
 
 #[tokio::test]
