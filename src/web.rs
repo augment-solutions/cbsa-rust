@@ -15,6 +15,7 @@ pub mod inqacccu;
 pub mod inqcust;
 pub mod updacc;
 pub mod updcust;
+pub mod xfrfun;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -35,6 +36,7 @@ pub fn router(state: AppState) -> Router {
         .merge(delcus::router())
         .merge(updacc::router())
         .merge(updcust::router())
+        .merge(xfrfun::router())
         .with_state(state)
 }
 
