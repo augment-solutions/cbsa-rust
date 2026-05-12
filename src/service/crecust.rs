@@ -3,7 +3,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use async_trait::async_trait;
 use chrono::{DateTime, Datelike, Days, NaiveDate, NaiveTime, Timelike, Utc};
 use sqlx::PgPool;
 use tokio::{
@@ -16,6 +15,9 @@ use crate::{
     domain::{CustomerDetails, CustomerProfile},
     error::CbsaError,
     repository::crecust::{self, CreateCustomerCommand, CreateCustomerOutcome},
+    service::crdtagy::{
+        CreditAgency, CreditAgencyClient, CreditAgencyRequest, SystemCreditAgencyClient,
+    },
 };
 
 const INVALID_TITLE_CODE: &str = "T";
@@ -101,7 +103,28 @@ pub async fn create(
 ) -> Result<CrecustResult, CbsaError> {
     let clock = SystemClock;
     let mut review_date_generator = SystemReviewDateGenerator::default();
-    let credit_client: Arc<dyn CreditAgencyClient> = Arc::new(SimulatedCreditAgencyClient);
+    let credit_client: Arc<dyn CreditAgencyClient> = Arc::new(SystemCreditAgencyClient);
+    create_with_dependencies(
+        pool,
+        sortcode,
+        request,
+        &clock,
+        &mut review_date_generator,
+        credit_client,
+    )
+    .await
+}
+
+pub async fn create_with_test_dependencies(
+    pool: &PgPool,
+    sortcode: &str,
+    request: CrecustRequest,
+    now: DateTime<Utc>,
+    review_offset_days: u32,
+    credit_client: Arc<dyn CreditAgencyClient>,
+) -> Result<CrecustResult, CbsaError> {
+    let clock = StaticClock(now);
+    let mut review_date_generator = FixedReviewDateGenerator(review_offset_days);
     create_with_dependencies(
         pool,
         sortcode,
@@ -313,52 +336,26 @@ struct CreditDecision {
     review_date: NaiveDate,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CreditAgencyRequest {
-    name: String,
-    address: String,
-    date_of_birth: u32,
-}
-
-// CRECUST.cbl CREDIT-CHECK issues five async child programs (OCR1..OCR5) and
-// binds them to fixed container slots CIPA..CIPE. The Rust translation models
-// those reserved slots as five stable agency identifiers until CRDTAGY itself
-// is migrated and wired in as a separate program.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CreditAgency {
-    One = 1,
-    Two = 2,
-    Three = 3,
-    Four = 4,
-    Five = 5,
-}
-
-impl CreditAgency {
-    const ALL: [Self; 5] = [Self::One, Self::Two, Self::Three, Self::Four, Self::Five];
-
-    fn number(self) -> u8 {
-        self as u8
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CreditAgencyError;
-
-#[async_trait]
-trait CreditAgencyClient: Send + Sync {
-    async fn request_score(
-        &self,
-        agency: CreditAgency,
-        request: CreditAgencyRequest,
-    ) -> Result<u16, CreditAgencyError>;
-}
-
 trait Clock: Send + Sync {
     fn now(&self) -> DateTime<Utc>;
 }
 
 trait ReviewDateGenerator: Send {
     fn next_offset_days(&mut self) -> u32;
+}
+
+struct StaticClock(DateTime<Utc>);
+impl Clock for StaticClock {
+    fn now(&self) -> DateTime<Utc> {
+        self.0
+    }
+}
+
+struct FixedReviewDateGenerator(u32);
+impl ReviewDateGenerator for FixedReviewDateGenerator {
+    fn next_offset_days(&mut self) -> u32 {
+        self.0
+    }
 }
 
 struct SystemClock;
@@ -394,37 +391,10 @@ impl ReviewDateGenerator for SystemReviewDateGenerator {
     }
 }
 
-struct SimulatedCreditAgencyClient;
-
-#[async_trait]
-impl CreditAgencyClient for SimulatedCreditAgencyClient {
-    async fn request_score(
-        &self,
-        agency: CreditAgency,
-        request: CreditAgencyRequest,
-    ) -> Result<u16, CreditAgencyError> {
-        tokio::task::yield_now().await;
-        Ok(simulated_credit_score(agency, &request))
-    }
-}
-
-fn simulated_credit_score(agency: CreditAgency, request: &CreditAgencyRequest) -> u16 {
-    let mut hash = 14_695_981_039_346_656_037u64;
-    for byte in request
-        .name
-        .bytes()
-        .chain(request.address.bytes())
-        .chain(format!("{:08}", request.date_of_birth).bytes())
-    {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(1_099_511_628_211);
-    }
-    (((hash ^ u64::from(agency.number())) % 998) + 1) as u16
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
 
     struct FixedClock(DateTime<Utc>);
     impl Clock for FixedClock {
@@ -441,7 +411,7 @@ mod tests {
     }
 
     struct FakeCreditAgencyClient {
-        responses: Vec<Result<u16, CreditAgencyError>>,
+        responses: Vec<Option<u16>>,
     }
 
     #[async_trait]
@@ -450,8 +420,9 @@ mod tests {
             &self,
             agency: CreditAgency,
             _request: CreditAgencyRequest,
-        ) -> Result<u16, CreditAgencyError> {
-            self.responses[usize::from(agency.number() - 1)].clone()
+        ) -> Result<u16, CbsaError> {
+            self.responses[usize::from(agency.number() - 1)]
+                .ok_or_else(|| CbsaError::abend("PLOP", "credit agency failed"))
         }
     }
 
@@ -496,13 +467,7 @@ mod tests {
         let mut review_date_generator = FixedReviewDateGenerator(7);
         let decision = evaluate_credit(
             Arc::new(FakeCreditAgencyClient {
-                responses: vec![
-                    Ok(410),
-                    Ok(420),
-                    Err(CreditAgencyError),
-                    Ok(460),
-                    Err(CreditAgencyError),
-                ],
+                responses: vec![Some(410), Some(420), None, Some(460), None],
             }),
             CreditAgencyRequest {
                 name: "Dr Alice Example".to_string(),
@@ -527,13 +492,7 @@ mod tests {
         let mut review_date_generator = FixedReviewDateGenerator(1);
         let decision = evaluate_credit(
             Arc::new(FakeCreditAgencyClient {
-                responses: vec![
-                    Err(CreditAgencyError),
-                    Err(CreditAgencyError),
-                    Err(CreditAgencyError),
-                    Err(CreditAgencyError),
-                    Err(CreditAgencyError),
-                ],
+                responses: vec![None, None, None, None, None],
             }),
             CreditAgencyRequest {
                 name: "Dr Alice Example".to_string(),
