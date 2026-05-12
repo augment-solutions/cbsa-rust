@@ -71,6 +71,10 @@ pub enum ProcTranType {
     Credit,
     #[serde(rename = "DEB")]
     Debit,
+    #[serde(rename = "PCR")]
+    PaymentCredit,
+    #[serde(rename = "PDR")]
+    PaymentDebit,
     #[serde(rename = "ICL")]
     BranchCreate,
     #[serde(rename = "OCC")]
@@ -97,6 +101,8 @@ impl ProcTranType {
             Self::ChequePaidOut => "CHO",
             Self::Credit => "CRE",
             Self::Debit => "DEB",
+            Self::PaymentCredit => "PCR",
+            Self::PaymentDebit => "PDR",
             Self::BranchCreate => "ICL",
             Self::CustomerCreate => "OCC",
             Self::AccountCreate => "OCA",
